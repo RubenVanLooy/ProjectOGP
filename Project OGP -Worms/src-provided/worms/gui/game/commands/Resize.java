@@ -2,9 +2,10 @@ package worms.gui.game.commands;
 
 import worms.gui.game.PlayGameScreen;
 import worms.gui.game.sprites.WormSprite;
+import worms.gui.messages.MessageType;
 import worms.model.IFacade;
 import worms.model.ModelException;
-import worms.model.Worm;
+import worms.model.worm.Worm;
 
 public class Resize extends InstantaneousCommand {
 	private final Worm worm;
@@ -18,7 +19,7 @@ public class Resize extends InstantaneousCommand {
 	}
 
 	@Override
-	protected boolean canExecute() {
+	protected boolean canStart() {
 		return worm != null;
 	}
 
@@ -33,7 +34,7 @@ public class Resize extends InstantaneousCommand {
 			// an invalid radius
 			getScreen().addMessage(
 					"Cannot " + (factor > 1.0 ? "grow" : "shrink")
-							+ " that worm anymore :(");
+							+ " that worm anymore :(", MessageType.ERROR);
 		}
 	}
 }

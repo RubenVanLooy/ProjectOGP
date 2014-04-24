@@ -12,10 +12,14 @@ public class ErrorScreen extends Screen {
 		super(gui);
 		this.message = message;
 	}
+	
+	@Override
+	public void screenStarted() {
+	}
 
 	@Override
-	protected InputMode createDefaultInputMode() {
-		return new InputMode() {
+	protected InputMode<ErrorScreen> createDefaultInputMode() {
+		return new InputMode<ErrorScreen>(this, null) {
 			@Override
 			public void keyReleased(KeyEvent e) {
 				if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {

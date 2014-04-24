@@ -1,5 +1,12 @@
-package worms.model;
+package worms.model.worm;
 
+
+import java.util.ArrayList;
+
+import worms.model.Position;
+import worms.model.World.World;
+import worms.model.World.WorldConstants;
+import worms.model.weapon.*;
 import be.kuleuven.cs.som.annotate.*;
 import be.kuleuven.cs.som.taglet.*;
 
@@ -19,6 +26,8 @@ import be.kuleuven.cs.som.taglet.*;
  * 			| isValidNumber(getMass())
  * @invar	The current action points of every worm must be a valid number and smaller then its max action points. <br>
  * 			| isValidNumber(getCurrentActionPoints()) && getCurrentActionPoints() < getMaxActionPoints()
+ * @invar	The current hit points of every worm must be a valid number and smaller then its max hit points. <br>
+ * 			| isValidNumber(getCurrentHitPoints()) && getCurrentHitPoints() < getMaxHitPoints()
  * @version 1.0
  * 
  * @author Ruben Van Looy
@@ -30,6 +39,8 @@ public class Worm {
 	/**
 	 * Initialize this new worm with the given x-coordinate, y-coordinate, direction, radius and name.
 	 * 
+	 * @param	world
+	 * 			The world this worm is in.
 	 * @param 	x
 	 * 			The x-coordinate for this new worm.
 	 * @param	y
@@ -52,15 +63,18 @@ public class Worm {
 	 * 			| new.getName() == name
 	 */
 	@Raw
-	public Worm(double x, double y, double direction, double radius, String name) {
+	public Worm(World world, double x, double y, double direction, double radius, String name) {
 		setX(x);
 		setY(y);
 		setDirection(direction);
 		setRadius(radius);
 		setName(name);
-		setMass(calculateMass());
+		setMass();
 		setMaxActionPoints();
-		setCurrentActionPoints(maxActionPoints);
+		setCurrentActionPoints(getMaxActionPoints());
+		setMaxHitPoints();
+		setCurrentHitPoints(getCurrentHitPoints());
+		initializeWeapons();
 	}
 	
 	/**
@@ -68,7 +82,7 @@ public class Worm {
 	 */
 	@Basic @Raw
 	public double getX() {
-		return xCoordinate;
+		return position.getX();
 	}
 	
 	/**
@@ -82,12 +96,12 @@ public class Worm {
 	 * 			The given x-coordinate is not a valid number. <br>
 	 * 			| !IsValidNumber(xCoordinate)
 	 */
-	private void setX(double xCoordinate) throws IllegalArgumentException {
+	public void setX(double xCoordinate) throws IllegalArgumentException {
 		
 		if (!isValidNumber(xCoordinate))
 			throw new IllegalArgumentException();
 		
-		this.xCoordinate = xCoordinate;
+		position.setX(xCoordinate);
 	}
 	
 	/**
@@ -95,7 +109,7 @@ public class Worm {
 	 */
 	@Basic @Raw
 	public double getY() {
-		return yCoordinate;
+		return position.getY();
 	}
 	
 	/**
@@ -109,12 +123,19 @@ public class Worm {
 	 * 			The given y-coordinate is not a valid number. <br>
 	 * 			| !IsValidNumber(yCoordinate)
 	 */
-	private void setY(double yCoordinate) throws IllegalArgumentException {
+	public void setY(double yCoordinate) throws IllegalArgumentException {
 		
 		if (!isValidNumber(yCoordinate))
 			throw new IllegalArgumentException();
 		
-		this.yCoordinate = yCoordinate;
+		position.setY(yCoordinate);
+	}
+	
+	/**
+	 * Return the position of this worm.
+	 */
+	public Position getPosition() {
+		return position.clone();
 	}
 	
 	/**
@@ -128,14 +149,9 @@ public class Worm {
 	 * 			The given number of steps is not a valid integer. <br>
 	 * 			| nbSteps == int x /0
 	 */
-	public void move(int nbSteps) {
-		try {
-			doSteps(nbSteps);
-			subtractMovementCost(nbSteps);
-		}
-		catch (ArithmeticException exc) {
-			throw exc;
-		}
+	public void move() {
+			doSteps(1);
+			subtractMovementCost(1);
 	}
 	
 	/**
@@ -217,14 +233,14 @@ public class Worm {
 	 * 			This worm can not jump. <br>
 	 * 			| !canJump()
 	 */
-	public void jump() throws IllegalStateException{
+	public void jump(double timeStep) throws IllegalStateException{
 		if (!canJump())
 			throw new IllegalStateException();
 		
-		double jumpTime = jumpTime();
-		double[] jumpStep = jumpStep(jumpTime);
-		setX(jumpStep[0]);
-		setY(jumpStep[1]);
+		double jumpTime = jumpTime(timeStep);
+		Position jumpStep = jumpStep(jumpTime);
+		setX(jumpStep.getX());
+		setY(jumpStep.getY());
 		
 		setCurrentActionPoints(0);
 	}
@@ -235,11 +251,40 @@ public class Worm {
 	 * @return	The time it takes for this worm to complete a jump in its direction. <br>
 	 * 			| jumpDistance() / ( getInitialJumpVelocity() * cos(direction))
 	 */
-	public double jumpTime() throws IllegalStateException{
+	public double jumpTime(double timeStep) throws IllegalStateException{
 		if (!canJump())
 			throw new IllegalStateException();
 		
-		return getJumpDistance() / (getInitialJumpVelocity() * Math.cos(direction));
+		double t = 0.;
+		Position currentPosition = jumpStep(t);
+			
+		while (!canLandAt(currentPosition) && world.isInMap(currentPosition, getRadius())) {
+			t+= timeStep;
+			currentPosition = jumpStep(t);
+		}
+			
+		return t;
+		
+	}
+	
+	/**
+	 * Check whether this worm can land at the given position.
+	 * 
+	 * @param 	position
+	 * 			The position to be checked.
+	 * @return	False if the given position is not adjacent to impassable terrain in this worm's world. <br>
+	 * 			| getWorld().isAdjacentToImpassableTerrain(position, getRadius()) <br>
+	 * 			False if the distance between the given position and this worm is smaller then this worm's radius. <br>
+	 * 			| position.getDistanceFrom(getPosition()) < getRadius() <br>
+	 * 			True otherwise.
+	 */
+	public boolean canLandAt(Position position) {
+		if (!getWorld().isAdjacentToImpassableTerrain(position, getRadius()))
+			return false;
+		if (position.getDistanceFrom(getPosition()) < getRadius())
+			return false;
+		
+		return true;
 	}
 	
 	/**
@@ -252,14 +297,14 @@ public class Worm {
 	 * 			With the first element being the x-coordinate and the second the y-coordinate. <br>
 	 * 			| {getNewXAfterTime(t) , getNewYAfterTime(t)}
 	 */
-	public double[] jumpStep (double t) throws IllegalStateException{
+	public Position jumpStep (double t) throws IllegalStateException{
 		if (!canJump())
 			throw new IllegalStateException();
 		
 		double newX = getNewXAfterTime(t);
 		double newY = getNewYAfterTime(t);
 
-		double[] vector = {newX,newY};
+		Position vector = new Position(newX, newY);
 		return vector;
 	}
 	
@@ -290,10 +335,10 @@ public class Worm {
 	 * @param 	worm
 	 * 			The worm to get the force from.
 	 * @return	The force that this worm exerts when jumping. <br>
-	 * 			| (5 * currentActionPoints) + (mass * WormConstants.GRAVITATIONAL_CONSTANT)
+	 * 			| (5 * currentActionPoints) + (mass * WorldConstants.GRAVITATIONAL_CONSTANT)
 	 */
 	public double getJumpForce() {
-		return (5 * currentActionPoints) + (mass * WormConstants.GRAVITATIONAL_CONSTANT);
+		return (5 * currentActionPoints) + (mass * WorldConstants.GRAVITATIONAL_CONSTANT);
 	}
 	
 	/**
@@ -303,18 +348,18 @@ public class Worm {
 	 * 			| (getJumpForce / mass) * WormConstants.Time_OF_EXERTING_FORCE
 	 */
 	public double getInitialJumpVelocity() {
-		return (getJumpForce() / mass) * WormConstants.TIME_OF_EXERTING_FORCE;
+		return (getJumpForce() / mass) * WormConstants.TIME_OF_EXERTING_JUMP_FORCE;
 	}
 	
 	/**
 	 * Get the distance this worm jumps.
 	 * 
 	 * @return	The distance this worm jumps. <br>
-	 * 			| (getInitialJumpVelocity ^ 2 * sin(2 * direction)) / WormConstants.GRAVITATIONAL_CONSTANT
+	 * 			| (getInitialJumpVelocity ^ 2 * sin(2 * direction)) / WorldConstants.GRAVITATIONAL_CONSTANT
 	 */
 	public  double getJumpDistance() {
 		double initV = getInitialJumpVelocity();
-		return (initV * initV * Math.sin(2 * direction)) / WormConstants.GRAVITATIONAL_CONSTANT;
+		return (initV * initV * Math.sin(2 * direction)) / WorldConstants.GRAVITATIONAL_CONSTANT;
 	}
 	
 	/**
@@ -355,21 +400,16 @@ public class Worm {
 	 * 			The time this worm has jumped.
 	 * 
 	 * @return	The y-coordinate of this worm after jumping for the given time. <br>
-	 * 			| getY + getInitalVerticalVelocity * t - (1/2) * WormConstants.GRAVITATIONAL_CONSTANT * t ^ 2
+	 * 			| getY + getInitalVerticalVelocity * t - (1/2) * WorldConstants.GRAVITATIONAL_CONSTANT * t ^ 2
 	 */
 	public double getNewYAfterTime(double t) {
-		return getY() + (getInitialVerticalVelocity() * t - (1./2.) * WormConstants.GRAVITATIONAL_CONSTANT * t * t);
+		return getY() + (getInitialVerticalVelocity() * t - (1./2.) * WorldConstants.GRAVITATIONAL_CONSTANT * t * t);
 	}
 	
 	/*
-	 * Variable registering the current x-coordinate of this worm.
+	 * A variable registering the position of this worm.
 	 */
-	private double xCoordinate;
-	
-	/*
-	 * Variable registering the current y-coordinate of this worm.
-	 */
-	private double yCoordinate;
+	private Position position =  new Position(0,0);
 	
 	/**
 	 * Return the direction of this worm.
@@ -507,7 +547,7 @@ public class Worm {
 			throw new IllegalArgumentException();
 		
 		this.radius = radius;
-		setMass(calculateMass());
+		setMass();
 	}
 	
 	/**
@@ -534,11 +574,12 @@ public class Worm {
 	private double minimalRadius = 0.25;
 	
 	/**
-	 * @return The mass of this worm.
+	 * @return 	The mass of this worm. <br>
+	 * 			| WormConstants.DENSITY * (4 / 3) * PI * radius ^ 3
 	 */
 	@Basic @Raw
 	public double getMass() {
-		return mass;
+		return WormConstants.DENSITY * ( (4. / 3.) * Math.PI * Math.pow(radius, 3) );
 	}
 	
 	/**
@@ -552,21 +593,11 @@ public class Worm {
 	 * 			| new.getMaxActionPoints() == new.mass
 	 */
 	@Raw
-	private void setMass(double mass) {
-		this.mass = mass;
+	private void setMass() {
+		mass = WormConstants.DENSITY * ( (4. / 3.) * Math.PI * Math.pow(radius, 3) );
 		setMaxActionPoints();
+		setMaxHitPoints();
 	}
-	
-	/**
-	 * Calculate the mass of this worm using its radius.
-	 * 
-	 * @return 	The mass of this worm. <br>
-	 * 			| WormConstants.DENSITY * (4 / 3) * PI * radius ^ 3
-	 */
-	public double calculateMass() {
-		return WormConstants.DENSITY * ( (4. / 3.) * Math.PI * Math.pow(radius, 3) );
-	}
-	
 	
 	/*
 	 * Variable registering the mass of this worm.
@@ -641,8 +672,8 @@ public class Worm {
 	 * 			The character to check.
 	 * @return	True if this character is a valid character. <br>
 	 * 			False if this character is not a valid character. <br>
-	 * 			| Character.isLetter(character) || <br>
-	 * 			| for each symbol <br>
+	 * 			| Character.isLetterOrDigit(character) || <br>
+	 * 			| for each symbol : getSymbols<br>
 	 * 			|	if (character == symbol) <br>
 	 * 			|		return true
 	 */
@@ -653,7 +684,7 @@ public class Worm {
 				return true;
 		}
 		
-		return Character.isLetter(character);
+		return Character.isLetterOrDigit(character);
 	}
 	
 	/**
@@ -731,7 +762,7 @@ public class Worm {
 	 * Return the maximum amount of action points of this worm.
 	 */
 	public int getMaxActionPoints(){
-		return maxActionPoints;
+		return (int) Math.round(getMass());
 	}
 	
 	/**
@@ -739,13 +770,13 @@ public class Worm {
 	 * 
 	 * @post	The maximum amount of action points is equal to this worm's mass. <br>
 	 * 			| new.getMaxActionPoints == getMass()
-	 * @effect	If the current amount of action points of this worm is larger then the maximum amount of action points of this worm, <br>
+	 * @post	If the current amount of action points of this worm is larger then the maximum amount of action points of this worm, <br>
 	 * 			the current amount of action points of this worm will be set to the maximum. <br>
-	 * 			| if (currentActionPoints > maxActionPoints) <br>
-	 *			| currentActionPoints = maxActionPoints;
+	 * 			| if (getCurrentActionPoints > getMaxActionPoints) <br>
+	 *			| setCurrentActionPoints(getMaxActionPoints)
 	 */
 	private void setMaxActionPoints() {
-		maxActionPoints = (int) Math.round(mass);
+		maxActionPoints = (int) Math.round(getMass());
 		
 		if (currentActionPoints > maxActionPoints)
 			currentActionPoints = maxActionPoints;
@@ -762,6 +793,60 @@ public class Worm {
 	private int maxActionPoints;
 	
 	/**
+	 * Return the current amount of hit points of this worm.
+	 */
+	public int getCurrentHitPoints() {
+		return currentHitPoints;
+	}
+	
+	/**
+	 * Set the current amount of hit points of this worm.
+	 * 
+	 * @param 	hitPoints
+	 * 			The hit points to be set.
+	 * @post	The current amount of hit points of this worm is equal to the given hit points. <br>
+	 * 			| new.getCurrentHitPoints == hitPoints
+	 */
+	private void setCurrentHitPoints(int hitPoints) {
+		if (hitPoints >= 0 && hitPoints <= getMaxHitPoints())
+			currentHitPoints = hitPoints;
+	}
+	
+	/**
+	 * Return the maximum amount of hit point of this worm.
+	 */
+	public int getMaxHitPoints() {
+		return (int) Math.round(getMass());
+	}
+	
+	/**
+	 * Set the maximum amount of hit points of this worm.
+	 * 
+	 * @post	The maximum amount of hit points of this worm is equal to this worm's mass. <br>
+	 * 			| new.getMaxHitPoints == getMass
+	 * @post	If the current amount of hit points of this worm is larger then the maximum amount of hit points of this worm, <br>
+	 * 			the current amount of hit pointsof this worm is set to the maximum amount. <br>
+	 * 			| if (getCurrentHitPoints > getMaxHitPoints) <br>
+				| setCurrentHitPoints(getMaxHitPoints)
+	 */
+	private void setMaxHitPoints() {
+		maxHitPoints = (int) Math.round(getMass());
+		
+		if (currentHitPoints > maxHitPoints)
+			currentHitPoints = maxHitPoints;
+	}
+	
+	/*
+	 * Variable registering the current amount of hit points of this worm.
+	 */
+	private int currentHitPoints;
+	
+	/*
+	 * Variable registering the maximum amount of hit points of this worm.
+	 */
+	private int maxHitPoints;
+	
+	/**
 	 * Check whether the given number is a valid number or not. 
 	 * 
 	 * @param 	number
@@ -774,4 +859,244 @@ public class Worm {
 	public boolean isValidNumber(double number) {
 		return !Double.isNaN(number);
 	}
+	
+	/**
+	 * Return the world this worm is in.
+	 */
+	public World getWorld() {
+		return world;
+	}
+	
+	/**
+	 * Add this worm to the given world
+	 * 
+	 * @param 	world
+	 * 			The world to which this worm is to be added.
+	 * 
+	 */
+	public void addTooWorld(World world) {
+		if (!canAddTooWorld(world))
+			throw new IllegalArgumentException();
+		world.addWorm(this);
+	}
+	
+	public boolean canAddTooWorld(World world) {
+		if (world == null)
+			return false;
+		if (world.isTermniated())
+			return false;
+		if (world.hasAsWorm(this))
+			return false;
+		if (isTerminated())
+			return false;
+			
+		return true;
+	}
+	
+	/**
+	 * Set the world of this worm
+	 * 
+	 * @param 	world
+	 * 			The world to be set.
+	 * @post	The world of this worm is equal to the given world. <br>
+	 * 			| new.getWorld == world
+	 * @throws 	IllegalArgumentException
+	 * 			The given world does not contain the given worm. <br>
+	 * 			| !world.hasAsWorm(this)
+	 */
+	public void setWorld(World world) throws IllegalArgumentException {
+		if (!world.hasAsWorm(this))
+			throw new IllegalArgumentException();
+		this.world = world;
+	}
+	
+	/*
+	 * A variable registering the world this worm is in.
+	 */
+	private World world;
+	
+	/**
+	 * Check whether the given weapon is a valid weapon.
+	 * 
+	 * @param 	weapon
+	 * 			The weapon to be checked.
+	 * @return	False if the given weapon is not effective. <br>
+	 * 			| weapon == null <br>
+	 * 			False is the given weapon is terminated. <br>
+	 * 			| weapon.isTerminated() <br>
+	 * 			True otherwise
+	 */
+	public boolean isValidWeapon(Weapon weapon) {
+		if (weapon == null)
+			return false;
+		if (weapon.isTerminated())
+			return false;
+		return true;
+	}
+	
+	/**
+	 * Return an arraylist containing the weapons of this worm.
+	 */
+	public ArrayList<Weapon> getAllWeapons() {
+		ArrayList<Weapon> toReturn = new ArrayList<Weapon>(weapons);
+		return toReturn;
+	}
+	
+	/**
+	 * Add a weapon to this worm's weapons.
+	 * 
+	 * @param 	weapon
+	 * 			The weapon to be added.
+	 * @post	This worm's weapon contains the given weapon.
+	 * 			| new.getAllWeapons.contains(weapon)
+	 * @throws	IllegalArgumentException
+	 * 			The given weapon is not a valid weapon. <br>
+	 * 			| !isValidWeapon(weapon)
+	 * @throws	IllegalArgumentException
+	 * 			This worm already has the given weapon. <br>
+	 * 			| getAllWeapons.contains(weapon)
+	 */
+	public void addWeapon(Weapon weapon) {
+		if (!isValidWeapon(weapon))
+			throw new IllegalArgumentException();
+		if (weapons.contains(weapon))
+			throw new IllegalArgumentException();
+		weapons.add(weapon);
+	}
+	
+	/**
+	 * Remove the given weapon of this worms weapons.
+	 * 
+	 * @param 	weapon
+	 * 			The weapon to be removed.
+	 * @post	This worm does not have the given weapon. <br>
+	 * 			| !new.getAllWeapons.contains(weapon)
+	 */
+	public void removeWeapon(Weapon weapon) {
+		weapons.remove(weapon);
+	}
+	
+	/**
+	 * Set the the current weapon to the given weapon of this worm.
+	 * 
+	 * @param 	weapon
+	 * 			The weapon to be set as the current weapon for this worm.
+	 * @post	This worm has the given weapon as its current weapon.
+	 */
+	private void setCurrentWeapon(Weapon weapon) {
+		if (!isValidWeapon(weapon))
+			throw new IllegalArgumentException();
+		currentWeapon = weapon;
+	}
+	
+	/**
+	 * Return the weapon this worm currently has selected.
+	 */
+	public Weapon getCurrentWeapon() {
+		return currentWeapon.clone();
+	}
+	
+	/**
+	 * Return the index of the given weapon.
+	 * 
+	 * @param 	weapon
+	 * 			The weapon to get the index from.
+	 */
+	public int getWeaponIndex(Weapon weapon) {
+		return weapons.indexOf(weapon);
+	}
+	
+	/**
+	 * Select the next weapon of this worm.
+	 * 
+	 * @post	This worm's current weapon is its next weapon. <br>
+	 * 			| new.getCurrentWeapon == getWeaponAt(getWeaponIndex(currentWeapon) + 1)
+	 * @post	If the worm had selected the first weapon it now has its first weapon as its current weapon. <br>
+	 * 			| if (old.getWeaponIndex = getNbWeapons) <br>
+	 * 			| 		new.getCurrentWeapon == getWeaponAt(0)
+	 */
+	public void selectNextWeapon() {
+		int index = getWeaponIndex(currentWeapon);
+		index++;
+		if (index > getNbWeapons())
+			index = 0;
+		currentWeapon = getWeaponAt(index);
+	}
+	
+	/**
+	 * Return the number of weapons this worm has.
+	 */
+	public int getNbWeapons() {
+		return weapons.size();
+	}
+	
+	/**
+	 * Return the weapon of this worm at the given index.
+	 * 
+	 * @param 	index
+	 * 			The index to get the weapon from.
+	 */
+	public Weapon getWeaponAt(int index) {
+		return weapons.get(index).clone();
+	}
+	
+	private void initializeWeapons() {
+		Bazooka bazooka = new Bazooka(getDirection(), getPosition(), this);
+		Rifle rifle = new Rifle (getDirection(), getPosition(), this);
+		
+		addWeapon(rifle);
+		addWeapon(bazooka);
+		
+		setCurrentWeapon(rifle);
+	}
+	
+	/*
+	 * A variable registering the current weapon of this worm.
+	 */
+	private Weapon currentWeapon;
+	
+	/*
+	 * An arraylist registering the weapons of this worm.
+	 */
+	private ArrayList<Weapon> weapons = new ArrayList<Weapon>();
+	
+	/**
+	 * @return	True if this worm is terminated. <br>
+	 * 			False otherwise.
+	 */
+	public boolean isTerminated() {
+		return isTerminated;
+	}
+	
+	/**
+	 * Terminate  this worm.
+	 * 
+	 * @post	This worm is terminated. <br>
+	 * 			| new.isTerminated 
+	 * @post	This worm is no part of it's world. <br>
+	 * 			| new.getWorld.hasAsWorm(this) == false
+	 * @post	This worm's world is not effective. <br>
+	 * 			| getWorld == null
+	 * @post	This worm has no weapons anymore. <br>
+	 * 			| new.getAllWeapons.isEmpty()
+	 */
+	public void Terminate() {
+		world.removeWorm(this);
+		world = null;
+		weapons.clear();
+		isTerminated = true;
+	}
+	
+	/*
+	 * A variable registering wether this worm is terminated or not.
+	 */
+	private boolean isTerminated = false;
+	
+	public Worm clone() {
+		Worm cloned = new Worm(getWorld(), getX(), getY(), getDirection(), getRadius(), getName());
+		cloned.setCurrentActionPoints(getCurrentActionPoints());
+		cloned.setCurrentHitPoints(getCurrentHitPoints());
+		return cloned;
+	}
+	
 }

@@ -1,5 +1,12 @@
 package worms.model;
 
+
+import java.util.Collection;
+import java.util.Random;
+
+import worms.model.World.World;
+import worms.model.weapon.Projectile;
+import worms.model.worm.Worm;
 import be.kuleuven.cs.som.annotate.*;
 import be.kuleuven.cs.som.taglet.*;
 
@@ -41,10 +48,10 @@ public class Facade implements IFacade{
 	 * 			| new Worm(x, y, direction, radius, name)
 	 */
 	@Override
-	public Worm createWorm(double x, double y, double direction, double radius,
+	public Worm createWorm(World world, double x, double y, double direction, double radius,
 			String name) {
 		try {
-			Worm worm = new Worm(x,y,direction,radius,name);
+			Worm worm = new Worm(world,x,y,direction,radius,name);
 			return worm;
 		}
 		catch (IllegalArgumentException exc){
@@ -72,9 +79,9 @@ public class Facade implements IFacade{
 	 * 			| worm == null
 	 */
 	@Override
-	public boolean canMove(Worm worm, int nbSteps) {
+	public boolean canMove(Worm worm) {
 		try{
-			return (worm.getCurrentActionPoints() > worm.getMovementCost(nbSteps)) && (nbSteps > 0);
+			return (worm.getCurrentActionPoints() > worm.getMovementCost(1));
 		}
 		catch (ArithmeticException exc) {
 			return false;
@@ -98,12 +105,12 @@ public class Facade implements IFacade{
 	 * 			| worm.move(nbSteps)
 	 */
 	@Override
-	public void move(Worm worm, int nbSteps) {
+	public void move(Worm worm) {
 		try{
-			if (!canMove(worm, nbSteps))
+			if (!canMove(worm))
 			throw new ModelException("The worm can not move.");
-		
-			worm.move(nbSteps);
+	
+			worm.move();
 		}
 		catch(ArithmeticException exc) 
 		{
@@ -165,9 +172,9 @@ public class Facade implements IFacade{
 	 * 			| !worm.canJump()
 	 */
 	@Override
-	public void jump(Worm worm) {
+	public void jump(Worm worm, double timeStep) {
 		try {
-			worm.jump();
+			worm.jump(timeStep);
 		}
 		catch(IllegalStateException exc) {
 			throw new ModelException("The given worm can not jump.");
@@ -187,10 +194,10 @@ public class Facade implements IFacade{
 	 * 			| !worm.canJump()
 	 */
 	@Override
-	public double getJumpTime(Worm worm) {
+	public double getJumpTime(Worm worm, double timeStep) {
 		
 		try{
-			return worm.jumpTime();
+			return worm.jumpTime(timeStep);
 		}
 		catch(IllegalStateException exc) {
 			throw new ModelException("The given worm can not jump.");
@@ -218,7 +225,8 @@ public class Facade implements IFacade{
 	@Override
 	public double[] getJumpStep(Worm worm, double t) {
 		try{
-			return worm.jumpStep(t);
+			double[] jumpStep = {worm.jumpStep(t).getX(), worm.jumpStep(t).getY()};
+			return jumpStep;
 		}
 		catch (ArithmeticException exc) {
 			throw new ModelException("The given time is not a valid number");
@@ -459,6 +467,217 @@ public class Facade implements IFacade{
 		catch (NullPointerException exc) {
 			throw new ModelException("The given worm must be an effective worm.");
 		}
+		
+	}
+
+	@Override
+	public void addEmptyTeam(World world, String newName) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void addNewFood(World world) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void addNewWorm(World world) {
+		Worm newWorm = createWorm(world,0,0,0,0.5, "New");
+		world.addWorm(newWorm);
+	}
+
+	@Override
+	public boolean canFall(Worm worm) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public Food createFood(World world, double x, double y) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public World createWorld(double width, double height,
+			boolean[][] passableMap, Random random) {
+		World world = new World(width, height, passableMap, random);
+		return world;
+	}
+
+	@Override
+	public void fall(Worm worm) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public Projectile getActiveProjectile(World world) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public Worm getCurrentWorm(World world) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public Collection<Food> getFood(World world) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public int getHitPoints(Worm worm) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public double[] getJumpStep(Projectile projectile, double t) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public double getJumpTime(Projectile projectile, double timeStep) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public int getMaxHitPoints(Worm worm) {
+		if (worm != null)
+			return worm.getMaxHitPoints();
+		return 0;
+	}
+
+	@Override
+	public double getRadius(Food food) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public double getRadius(Projectile projectile) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public String getSelectedWeapon(Worm worm) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public String getTeamName(Worm worm) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public String getWinner(World world) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public Collection<Worm> getWorms(World world) {
+		return world.getAllWorms();
+	}
+
+	@Override
+	public double getX(Food food) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public double getX(Projectile projectile) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public double getY(Food food) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public double getY(Projectile projectile) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public boolean isActive(Food food) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean isActive(Projectile projectile) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean isAdjacent(World world, double x, double y, double radius) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean isAlive(Worm worm) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean isGameFinished(World world) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean isImpassable(World world, double x, double y, double radius) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public void jump(Projectile projectile, double timeStep) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void selectNextWeapon(Worm worm) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void shoot(Worm worm, int yield) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void startGame(World world) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void startNextTurn(World world) {
+		// TODO Auto-generated method stub
 		
 	}
 
